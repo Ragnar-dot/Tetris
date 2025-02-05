@@ -6,6 +6,12 @@ import 'package:tetris/game_settings.dart';
 import 'package:tetris/highscore_service.dart';
 import 'package:tetris/tetromino.dart';
 import 'package:tetris/game_music_controller.dart';
+import 'package:flutter/services.dart';
+import 'package:tetris/models/player_score.dart';
+import 'package:tetris/screens/welcome_screen.dart';
+import 'package:tetris/screens/hall_of_fame.dart';
+import 'package:provider/provider.dart';
+import 'package:tetris/providers/highscore_notifier.dart';
 
 void main() {
   runApp(const TetrisApp());
@@ -16,19 +22,27 @@ class TetrisApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: Colors.blue,
+    return ChangeNotifierProvider(
+      create: (_) => HighscoreNotifier(),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          primaryColor: Colors.blue,
+        ),
+        home: const WelcomeScreen(),
       ),
-      home: const TetrisHomePage(),
     );
   }
 }
 
 class TetrisHomePage extends StatefulWidget {
-  const TetrisHomePage({super.key});
+  final String playerName;
+
+  const TetrisHomePage({
+    super.key,
+    required this.playerName,
+  });
 
   @override
   State<TetrisHomePage> createState() => _TetrisHomePageState();
@@ -58,18 +72,13 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
   void initState() {
     super.initState();
     _initializeMusic();
-    loadHighscore();
+    context.read<HighscoreNotifier>().loadHighscore();
     startGame();
   }
 
   Future<void> _initializeMusic() async {
     await _musicController.initialize();
     _musicController.play();
-  }
-
-  Future<void> loadHighscore() async {
-    highscore = await HighscoreService.getHighscore(difficulty);
-    setState(() {});
   }
 
   void startGame() {
@@ -121,9 +130,67 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
     });
   }
 
+  Widget _buildGameWrapper(Widget gameContent) {
+    return RawKeyboardListener(
+      focusNode: FocusNode(),
+      autofocus: true,
+      onKey: (RawKeyEvent event) {
+        if (event is RawKeyDownEvent) {
+          if (event.repeat) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              setState(() {
+                while (canMoveDown()) {
+                  currentPiece?.moveDown();
+                }
+                playSound('drop');
+              });
+            }
+            return;
+          }
+
+          setState(() {
+            switch (event.logicalKey) {
+              case LogicalKeyboardKey.arrowLeft:
+                if (canMove(-1)) {
+                  currentPiece?.moveLeft();
+                  playSound('move');
+                }
+                break;
+              case LogicalKeyboardKey.arrowRight:
+                if (canMove(1)) {
+                  currentPiece?.moveRight();
+                  playSound('move');
+                }
+                break;
+              case LogicalKeyboardKey.arrowUp:
+                rotatePiece();
+                playSound('rotate');
+                break;
+              case LogicalKeyboardKey.arrowDown:
+                if (canMoveDown()) {
+                  currentPiece?.moveDown();
+                }
+                break;
+              case LogicalKeyboardKey.space:
+                while (canMoveDown()) {
+                  currentPiece?.moveDown();
+                }
+                playSound('drop');
+                break;
+            }
+          });
+        }
+      },
+      child: gameContent,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final isMobile = Theme.of(context).platform == TargetPlatform.iOS ||
+        Theme.of(context).platform == TargetPlatform.android;
+
+    Widget gameContent = Scaffold(
       appBar: AppBar(
         title: Text('Tetris - Score: $score'),
         actions: [
@@ -141,6 +208,7 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
               setState(() {
                 difficulty = newDifficulty;
                 gameTimer?.cancel();
+                context.read<HighscoreNotifier>().loadHighscore();
                 startGame();
               });
             },
@@ -160,8 +228,12 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Highscore: $highscore',
-                    style: const TextStyle(fontSize: 18)),
+                Consumer<HighscoreNotifier>(
+                  builder: (context, highscoreNotifier, child) => Text(
+                    'Highscore: ${highscoreNotifier.currentHighscore}',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
                 Container(
                   width: 80,
                   height: 80,
@@ -267,82 +339,91 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(10.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(20),
+          if (isMobile)
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(20),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        if (canMove(-1)) {
+                          currentPiece?.moveLeft();
+                          playSound('move');
+                        }
+                      });
+                    },
+                    child: const Icon(Icons.arrow_left),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      if (canMove(-1)) {
-                        currentPiece?.moveLeft();
-                        playSound('move');
-                      }
-                    });
-                  },
-                  child: const Icon(Icons.arrow_left, size: 20),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(20),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(20),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        rotatePiece();
+                        playSound('rotate');
+                      });
+                    },
+                    child: const Icon(Icons.rotate_right),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      rotatePiece();
-                      playSound('rotate');
-                    });
-                  },
-                  child: const Icon(Icons.rotate_right, size: 20),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(20),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(20),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        if (canMove(1)) {
+                          currentPiece?.moveRight();
+                          playSound('move');
+                        }
+                      });
+                    },
+                    child: const Icon(Icons.arrow_right),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      if (canMove(1)) {
-                        currentPiece?.moveRight();
-                        playSound('move');
-                      }
-                    });
-                  },
-                  child: const Icon(Icons.arrow_right, size: 20),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: const EdgeInsets.all(20),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(20),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        while (canMoveDown()) {
+                          currentPiece?.moveDown();
+                        }
+                        playSound('drop');
+                      });
+                    },
+                    child: const Icon(Icons.arrow_drop_down),
                   ),
-                  onPressed: () {
-                    setState(() {
-                      while (canMoveDown()) {
-                        currentPiece?.moveDown();
-                      }
-                      playSound('drop');
-                    });
-                  },
-                  child: const Icon(Icons.arrow_drop_down, size: 20),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
+
+    return isMobile ? gameContent : _buildGameWrapper(gameContent);
   }
 
   void gameOver() async {
     _musicController.stop();
     gameTimer?.cancel();
     isGameOver = true;
-    await HighscoreService.saveHighscore(score, difficulty);
+    updateHighscore(score);
+    await HighscoreService.saveScore(PlayerScore(
+      playerName: widget.playerName,
+      score: score,
+      date: DateTime.now(),
+      difficulty: difficulty,
+    ));
     playSound('gameover');
 
     if (!mounted) return;
@@ -360,6 +441,30 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              final scores = await HighscoreService.getScores();
+              if (!mounted) return;
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => HallOfFame(
+                    scores: scores,
+                    onRestart: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                          builder: (context) => TetrisHomePage(
+                            playerName: widget.playerName,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+            child: const Text('Hall of Fame'),
+          ),
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
@@ -381,9 +486,11 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
       currentPiece = null;
       nextPiece = null;
       score = 0;
+      highscore = 0;
       isGameOver = false;
       _musicController.play();
       startGame();
+      context.read<HighscoreNotifier>().loadHighscore();
     });
   }
 
@@ -498,6 +605,13 @@ class _TetrisHomePageState extends State<TetrisHomePage> {
   Tetromino generateNewPiece() {
     return Tetromino(
         TetrominoType.values[Random().nextInt(TetrominoType.values.length)]);
+  }
+
+  void updateHighscore(int newScore) {
+    context.read<HighscoreNotifier>().updateHighscore(newScore, difficulty);
+    setState(() {
+      highscore = context.read<HighscoreNotifier>().currentHighscore;
+    });
   }
 
   @override
