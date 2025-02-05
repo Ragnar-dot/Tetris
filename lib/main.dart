@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:provider/provider.dart';
+
+// Privat Imports
+import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import 'package:tetris/game_settings.dart';
 import 'package:tetris/highscore_service.dart';
 import 'package:tetris/tetromino.dart';
 import 'package:tetris/game_music_controller.dart';
-import 'package:flutter/services.dart';
 import 'package:tetris/models/player_score.dart';
 import 'package:tetris/screens/welcome_screen.dart';
 import 'package:tetris/screens/hall_of_fame.dart';
-import 'package:provider/provider.dart';
 import 'package:tetris/providers/highscore_notifier.dart';
 
 void main() {
